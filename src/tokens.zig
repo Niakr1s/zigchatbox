@@ -16,9 +16,16 @@ pub const ClientMsg = struct {
     }
 };
 
+pub const ClientCmd = union(enum) {
+    whoami: struct {},
+
+    const WHOAMI = "whoami";
+};
+
 /// Represents a token, that client sends
 pub const ClientToken = union(enum) {
     msg: ClientMsg,
+    cmd: ClientCmd,
 
     pub fn deinit(self: ClientToken, gpa: std.mem.Allocator) void {
         switch (self) {
@@ -29,10 +36,24 @@ pub const ClientToken = union(enum) {
     /// Constructs ClientToken
     /// For now it holds just a ClientMsg
     pub fn fromStringAlloc(gpa: std.mem.Allocator, str: []const u8) !ClientToken {
-        const msg = try ClientMsg.fromStringAlloc(gpa, str);
-        return ClientToken{
-            .msg = msg,
-        };
+        if (str.len == 0) {
+            return error.EmptyString;
+        }
+
+        if (str[0] == '/') {
+            if (std.mem.eql(u8, ClientCmd.WHOAMI, str[1..])) {
+                return ClientToken{
+                    .cmd = ClientCmd{ .whoami = .{} },
+                };
+            } else {
+                return error.UnknownClientCmd;
+            }
+        } else {
+            const msg = try ClientMsg.fromStringAlloc(gpa, str);
+            return ClientToken{
+                .msg = msg,
+            };
+        }
     }
 };
 

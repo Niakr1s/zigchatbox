@@ -80,13 +80,33 @@ pub const Server = struct {
                     },
                 }
             }) |line| {
-                const token = try tokens.ClientToken.fromStringAlloc(gpa, line);
+                const token = tokens.ClientToken.fromStringAlloc(gpa, line) catch |err| {
+                    switch (err) {
+                        error.EmptyString, error.UnknownClientCmd => {
+                            const errLine = try std.fmt.allocPrint(gpa, "Error: {any}\n", .{err});
+                            defer gpa.free(errLine);
+                            try Broadcaster.broadcastToOne(io, connection, errLine);
+
+                            continue;
+                        },
+                        error.OutOfMemory => return err,
+                    }
+                }; // handle errors
 
                 switch (token) {
                     .msg => |msg| {
                         const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, msg.msg });
                         defer gpa.free(fullLine);
                         try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), fullLine, connection.username);
+                    },
+                    .cmd => |cmd| {
+                        switch (cmd) {
+                            .whoami => {
+                                const whoamiLine = try std.fmt.allocPrint(gpa, "> You are {s}\n", .{connection.username});
+                                defer gpa.free(whoamiLine);
+                                try Broadcaster.broadcastToOne(io, connection, whoamiLine);
+                            },
+                        }
                     },
                 }
             } else {
