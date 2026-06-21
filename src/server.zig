@@ -61,7 +61,9 @@ pub const Server = struct {
         var reader = connection.stream.reader(io, &readBuf);
 
         while (try reader.interface.takeDelimiter('\n')) |line| {
-            try self.broadcast(io, line);
+            var buf: [1024]u8 = undefined;
+            const fullLine = try std.fmt.bufPrint(&buf, "{s}: {s}\n", .{ connection.username, line });
+            try self.broadcast(io, fullLine);
         }
         std.debug.print("[{s}]: disconnected\n", .{connection.username});
     }
@@ -72,7 +74,7 @@ pub const Server = struct {
         while (iter.next()) |connection| {
             var writeBuf: [256]u8 = undefined;
             var writer = connection.*.stream.writer(io, &writeBuf);
-            _ = try writer.interface.print("{s}\n", .{line});
+            _ = try writer.interface.write(line);
             _ = try writer.interface.flush();
         }
     }
