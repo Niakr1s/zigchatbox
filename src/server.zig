@@ -80,7 +80,9 @@ pub const Server = struct {
     }
 
     fn broadcastExceptOne(self: *Self, io: std.Io, line: []const u8, except: []const u8) !void {
-        std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
+        // std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
+        std.debug.print("{s}", .{line});
+
         var iter = self.connections.valueIterator();
         while (iter.next()) |connection| {
             if (std.mem.eql(u8, except, connection.*.username)) continue;
