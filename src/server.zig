@@ -28,15 +28,15 @@ pub const Server = struct {
             const stream = try self.server.accept(io);
 
             // temporary string on the stack
-            const username = try std.fmt.allocPrint(gpa, "Anon{d}", .{i});
-            defer gpa.free(username);
+            const nickname = try std.fmt.allocPrint(gpa, "Anon{d}", .{i});
+            defer gpa.free(nickname);
 
-            const connection = try Connection.init(gpa, username, stream);
+            const connection = try Connection.init(gpa, nickname, stream);
 
-            if (self.connections.contains(username)) {
-                return error.DuplicateUsername;
+            if (self.connections.contains(nickname)) {
+                return error.Duplicatenickname;
             }
-            try self.connections.put(gpa, connection.username, connection);
+            try self.connections.put(gpa, connection.nickname, connection);
 
             self.group.async(io, Self.startMessagingAsync, .{ self, gpa, io, connection });
             // try self.startMessaging(io, connection);
@@ -45,19 +45,19 @@ pub const Server = struct {
 
     fn startMessagingAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) error{Canceled}!void {
         self.startMessaging(gpa, io, connection) catch |err| {
-            std.debug.print("[{s}]: {any}\n", .{ connection.username, err });
+            std.debug.print("[{s}]: {any}\n", .{ connection.nickname, err });
         };
     }
 
     fn startMessaging(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !void {
         defer {
-            const removed = self.connections.swapRemove(connection.username);
+            const removed = self.connections.swapRemove(connection.nickname);
             if (!removed) {
-                std.debug.print("[{s}]: Error: wasn't removed from connections\n", .{connection.username});
+                std.debug.print("[{s}]: Error: wasn't removed from connections\n", .{connection.nickname});
             }
         }
 
-        const helloLine = try std.fmt.allocPrint(gpa, "{s}: joined\n", .{connection.username});
+        const helloLine = try std.fmt.allocPrint(gpa, "{s}: joined\n", .{connection.nickname});
         defer gpa.free(helloLine);
         try Broadcaster.broadcastToAll(io, self.connections.values(), helloLine);
 
@@ -95,14 +95,14 @@ pub const Server = struct {
 
                 switch (token) {
                     .msg => |msg| {
-                        const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, msg.msg });
+                        const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.nickname, msg.msg });
                         defer gpa.free(fullLine);
-                        try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), fullLine, connection.username);
+                        try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), fullLine, connection.nickname);
                     },
                     .cmd => |cmd| {
                         switch (cmd) {
                             .whoami => {
-                                const whoamiLine = try std.fmt.allocPrint(gpa, "> You are {s}\n", .{connection.username});
+                                const whoamiLine = try std.fmt.allocPrint(gpa, "> You are {s}\n", .{connection.nickname});
                                 defer gpa.free(whoamiLine);
                                 try Broadcaster.broadcastToOne(io, connection, whoamiLine);
                             },
@@ -113,10 +113,10 @@ pub const Server = struct {
                 break;
             }
         }
-        const disconnectedLine = try std.fmt.allocPrint(gpa, "{s}: disconnected\n", .{connection.username});
+        const disconnectedLine = try std.fmt.allocPrint(gpa, "{s}: disconnected\n", .{connection.nickname});
         defer gpa.free(disconnectedLine);
-        try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), disconnectedLine, connection.username);
-        // std.debug.print("[{s}]: disconnected\n", .{connection.username});
+        try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), disconnectedLine, connection.nickname);
+        // std.debug.print("[{s}]: disconnected\n", .{connection.nickname});
     }
 };
 
@@ -140,7 +140,7 @@ const Broadcaster = struct {
         std.debug.print("{s}", .{line});
 
         for (connections) |connection| {
-            if (std.mem.eql(u8, except, connection.*.username)) continue;
+            if (std.mem.eql(u8, except, connection.*.nickname)) continue;
             try broadcastToOne(io, connection, line);
         }
     }
@@ -149,17 +149,17 @@ const Broadcaster = struct {
 const Connection = struct {
     const Self = @This();
 
-    username: []const u8,
+    nickname: []const u8,
     stream: std.Io.net.Stream,
 
     /// Args:
-    ///   username: will be duplicated and owned
-    fn init(gpa: std.mem.Allocator, username: []const u8, stream: std.Io.net.Stream) !*Connection {
+    ///   nickname: will be duplicated and owned
+    fn init(gpa: std.mem.Allocator, nickname: []const u8, stream: std.Io.net.Stream) !*Connection {
         const connection = try gpa.create(Connection);
         errdefer gpa.destroy(connection);
 
-        connection.username = try gpa.dupe(u8, username);
-        errdefer gpa.destroy(connection.username);
+        connection.nickname = try gpa.dupe(u8, nickname);
+        errdefer gpa.destroy(connection.nickname);
 
         connection.stream = stream;
         return connection;
@@ -167,7 +167,7 @@ const Connection = struct {
 
     fn deinit(self: *Self, gpa: std.mem.Allocator, io: std.Io) void {
         self.stream.close(io);
-        gpa.free(self.username);
+        gpa.free(self.nickname);
         gpa.destroy(self);
     }
 
