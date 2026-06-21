@@ -17,7 +17,7 @@ pub const ClientMsg = struct {
 };
 
 pub const ClientCmd = union(enum) {
-    whoami: CliendCmdWhoami,
+    whoami: Whoami,
 
     fn deinit(self: ClientCmd, gpa: std.mem.Allocator) void {
         _ = gpa;
@@ -26,7 +26,7 @@ pub const ClientCmd = union(enum) {
         }
     }
 
-    pub const CliendCmdWhoami = struct {
+    pub const Whoami = struct {
         const CMD = "whoami";
     };
 
@@ -37,7 +37,7 @@ pub const ClientCmd = union(enum) {
         _ = gpa;
 
         const trimmed = std.mem.trim(u8, str, " ");
-        if (std.mem.eql(u8, CliendCmdWhoami.CMD, trimmed)) {
+        if (std.mem.eql(u8, Whoami.CMD, trimmed)) {
             return ClientCmd{ .whoami = .{} };
         } else {
             return error.UnknownClientCmd;
@@ -89,22 +89,22 @@ test "ClientMsg contains the same string" {
 
 test "ClienCmd creates whoami command" {
     const gpa = std.testing.allocator;
-    const str = ClientCmd.CliendCmdWhoami.CMD;
+    const str = ClientCmd.Whoami.CMD;
 
     const msg = try ClientCmd.fromStringAlloc(gpa, str);
     defer msg.deinit(gpa);
 
-    try std.testing.expectEqual(ClientCmd.CliendCmdWhoami{}, msg.whoami);
+    try std.testing.expectEqual(ClientCmd.Whoami{}, msg.whoami);
 }
 
 test "ClienCmd trims incoming str" {
     const gpa = std.testing.allocator;
-    const str = ClientCmd.CliendCmdWhoami.CMD ++ "   ";
+    const str = ClientCmd.Whoami.CMD ++ "   ";
 
     const msg = try ClientCmd.fromStringAlloc(gpa, str);
     defer msg.deinit(gpa);
 
-    try std.testing.expectEqual(ClientCmd.CliendCmdWhoami{}, msg.whoami);
+    try std.testing.expectEqual(ClientCmd.Whoami{}, msg.whoami);
 }
 
 test "ClientToken creates a message token" {
