@@ -59,7 +59,7 @@ pub const Server = struct {
 
         const helloLine = try std.fmt.allocPrint(gpa, "{s}: joined\n", .{connection.username});
         defer gpa.free(helloLine);
-        try Broadcaster.broadcast(io, self.connections.values(), helloLine);
+        try Broadcaster.broadcastToAll(io, self.connections.values(), helloLine);
 
         var readBuf: [256]u8 = undefined;
         var reader = connection.stream.reader(io, &readBuf);
@@ -82,14 +82,14 @@ pub const Server = struct {
             }) |line| {
                 const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
                 defer gpa.free(fullLine);
-                try Broadcaster.broadcastExceptOne(io, self.connections.values(), fullLine, connection.username);
+                try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), fullLine, connection.username);
             } else {
                 break;
             }
         }
         const disconnectedLine = try std.fmt.allocPrint(gpa, "{s}: disconnected\n", .{connection.username});
         defer gpa.free(disconnectedLine);
-        try Broadcaster.broadcastExceptOne(io, self.connections.values(), disconnectedLine, connection.username);
+        try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), disconnectedLine, connection.username);
         // std.debug.print("[{s}]: disconnected\n", .{connection.username});
     }
 };
@@ -105,11 +105,11 @@ const Broadcaster = struct {
         _ = try writer.interface.flush();
     }
 
-    fn broadcast(io: std.Io, connections: []*Connection, line: []const u8) !void {
-        return Self.broadcastExceptOne(io, connections, line, "");
+    fn broadcastToAll(io: std.Io, connections: []*Connection, line: []const u8) !void {
+        return Self.broadcastToAllExceptOne(io, connections, line, "");
     }
 
-    fn broadcastExceptOne(io: std.Io, connections: []*Connection, line: []const u8, except: []const u8) !void {
+    fn broadcastToAllExceptOne(io: std.Io, connections: []*Connection, line: []const u8, except: []const u8) !void {
         // std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
         std.debug.print("{s}", .{line});
 
