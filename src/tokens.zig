@@ -26,6 +26,7 @@ pub const ClientCmd = union(enum) {
         }
     }
 
+    /// Requests nickname
     pub const Whoami = struct {
         const CMD = "whoami";
     };
