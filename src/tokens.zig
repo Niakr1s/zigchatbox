@@ -16,10 +16,12 @@ pub const ClientMsg = struct {
     }
 };
 
-pub const ClientCmd = union(enum) {
-    whoami: struct {},
-
+const CliendCmdWhoami = struct {
     const WHOAMI = "whoami";
+};
+
+pub const ClientCmd = union(enum) {
+    whoami: CliendCmdWhoami,
 };
 
 /// Represents a token, that client sends
@@ -41,7 +43,7 @@ pub const ClientToken = union(enum) {
         }
 
         if (str[0] == '/') {
-            if (std.mem.eql(u8, ClientCmd.WHOAMI, str[1..])) {
+            if (std.mem.eql(u8, CliendCmdWhoami.WHOAMI, str[1..])) {
                 return ClientToken{
                     .cmd = ClientCmd{ .whoami = .{} },
                 };
