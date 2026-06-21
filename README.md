@@ -24,7 +24,7 @@ Cool
 
 ## TODO
 
-[ ] Server.startMessaging function became too large, need to think how to split it for it to become mantainable and testable
-[ ] Add tests to server.zig
-[ ] Add '/exit' command
-[ ] Add sort to '/who' command
+- [ ] Server.startMessaging function became too large, need to think how to split it for it to become mantainable and testable
+- [ ] Add tests to server.zig
+- [ ] Add '/exit' command
+- [ ] Add sort to '/who' command
