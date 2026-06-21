@@ -69,7 +69,10 @@ pub const Server = struct {
             defer gpa.free(fullLine);
             try self.broadcastExceptOne(io, fullLine, connection.username);
         }
-        std.debug.print("[{s}]: disconnected\n", .{connection.username});
+        const disconnectedLine = try std.fmt.allocPrint(gpa, "{s}: disconnected\n", .{connection.username});
+        defer gpa.free(disconnectedLine);
+        try self.broadcastExceptOne(io, disconnectedLine, connection.username);
+        // std.debug.print("[{s}]: disconnected\n", .{connection.username});
     }
 
     fn broadcast(self: *Self, io: std.Io, line: []const u8) !void {
