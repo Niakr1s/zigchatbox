@@ -58,7 +58,6 @@ pub const ClientToken = union(enum) {
     }
 
     /// Constructs ClientToken
-    /// For now it holds just a ClientMsg
     pub fn fromStringAlloc(gpa: std.mem.Allocator, str: []const u8) !ClientToken {
         if (str.len == 0) {
             return error.EmptyString;
