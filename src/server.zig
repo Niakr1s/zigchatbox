@@ -165,7 +165,7 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
             defer {
                 const removed = self.users.swapRemove(user.nickname);
                 if (!removed) {
-                    std.debug.print("[{s}]: Error: wasn't removed from connections\n", .{user.nickname});
+                    std.debug.print("[{s}]: Error: wasn't removed from users\n", .{user.nickname});
                 }
             }
 
@@ -196,54 +196,7 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
                     }; // handle errors
                     defer token.deinit(gpa);
 
-                    switch (token) {
-                        .msg => |msg| {
-                            const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ user.nickname, msg.msg });
-                            defer gpa.free(fullLine);
-                            try Broadcaster.broadcastToAllExceptOne(io, self.users.values(), fullLine, user.nickname);
-                        },
-                        .cmd => |cmd| {
-                            switch (cmd) {
-                                .whoami => {
-                                    const whoamiLine = try std.fmt.allocPrint(gpa, "> You are {s}\n", .{user.nickname});
-                                    defer gpa.free(whoamiLine);
-                                    try Broadcaster.broadcastToOne(io, user, whoamiLine);
-                                },
-                                .who => {
-                                    const whoLine = try std.fmt.allocPrint(gpa, "> Clients: {any}\n", .{self.users.values()});
-                                    defer gpa.free(whoLine);
-
-                                    var stringBuilder = try std.ArrayList(u8).initCapacity(gpa, user.nickname.len * 2);
-
-                                    // TODO: maybe I need to sort them...
-                                    for (self.users.values()) |conn| {
-                                        try stringBuilder.appendSlice(gpa, "> ");
-                                        try stringBuilder.appendSlice(gpa, conn.nickname);
-                                        try stringBuilder.appendSlice(gpa, "\n");
-                                    }
-
-                                    try Broadcaster.broadcastToOne(io, user, stringBuilder.items);
-                                },
-                                .nickname => {
-                                    const newNickname = cmd.nickname.nickname;
-                                    const oldNickname = user.nickname;
-                                    if (!self.users.contains(newNickname)) {
-                                        const removed = self.users.swapRemove(oldNickname);
-                                        std.debug.print("removed {s} = {any}, connections count = {d}\n", .{ oldNickname, removed, self.users.count() });
-
-                                        // this needs to be before setNickname call
-                                        const nicknameLine = try std.fmt.allocPrint(gpa, "> {s} is known as {s} now\n", .{ oldNickname, newNickname });
-                                        defer gpa.free(nicknameLine);
-
-                                        try user.setNickname(gpa, newNickname);
-                                        try self.users.put(gpa, user.nickname, user);
-
-                                        try Broadcaster.broadcastToAll(io, self.users.values(), nicknameLine);
-                                    }
-                                },
-                            }
-                        },
-                    }
+                    try self.handleToken(gpa, io, user, &token);
                 } else {
                     break;
                 }
@@ -252,6 +205,57 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
             defer gpa.free(disconnectedLine);
             try Broadcaster.broadcastToAllExceptOne(io, self.users.values(), disconnectedLine, user.nickname);
             // std.debug.print("[{s}]: disconnected\n", .{connection.nickname});
+        }
+
+        fn handleToken(self: *Self, gpa: std.mem.Allocator, io: std.Io, user: *User, token: *const tokens.ClientToken) !void {
+            switch (token.*) {
+                .msg => |msg| {
+                    const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ user.nickname, msg.msg });
+                    defer gpa.free(fullLine);
+                    try Broadcaster.broadcastToAllExceptOne(io, self.users.values(), fullLine, user.nickname);
+                },
+                .cmd => |cmd| {
+                    switch (cmd) {
+                        .whoami => {
+                            const whoamiLine = try std.fmt.allocPrint(gpa, "> You are {s}\n", .{user.nickname});
+                            defer gpa.free(whoamiLine);
+                            try Broadcaster.broadcastToOne(io, user, whoamiLine);
+                        },
+                        .who => {
+                            const whoLine = try std.fmt.allocPrint(gpa, "> Clients: {any}\n", .{self.users.values()});
+                            defer gpa.free(whoLine);
+
+                            var stringBuilder = try std.ArrayList(u8).initCapacity(gpa, user.nickname.len * 2);
+
+                            // TODO: maybe I need to sort them...
+                            for (self.users.values()) |conn| {
+                                try stringBuilder.appendSlice(gpa, "> ");
+                                try stringBuilder.appendSlice(gpa, conn.nickname);
+                                try stringBuilder.appendSlice(gpa, "\n");
+                            }
+
+                            try Broadcaster.broadcastToOne(io, user, stringBuilder.items);
+                        },
+                        .nickname => {
+                            const newNickname = cmd.nickname.nickname;
+                            const oldNickname = user.nickname;
+                            if (!self.users.contains(newNickname)) {
+                                const removed = self.users.swapRemove(oldNickname);
+                                std.debug.print("removed {s} = {any}, users count = {d}\n", .{ oldNickname, removed, self.users.count() });
+
+                                // this needs to be before setNickname call
+                                const nicknameLine = try std.fmt.allocPrint(gpa, "> {s} is known as {s} now\n", .{ oldNickname, newNickname });
+                                defer gpa.free(nicknameLine);
+
+                                try user.setNickname(gpa, newNickname);
+                                try self.users.put(gpa, user.nickname, user);
+
+                                try Broadcaster.broadcastToAll(io, self.users.values(), nicknameLine);
+                            }
+                        },
+                    }
+                },
+            }
         }
 
         const Broadcaster = struct {
@@ -265,7 +269,7 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
             }
 
             fn broadcastToAllExceptOne(io: std.Io, users: []*User, line: []const u8, except: []const u8) !void {
-                // std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
+                // std.debug.print("broadcasting for {d} users\n", .{self.users.size});
                 std.debug.print("{s}", .{line});
 
                 for (users) |user| {
