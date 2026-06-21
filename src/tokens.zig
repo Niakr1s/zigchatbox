@@ -22,6 +22,13 @@ const CliendCmdWhoami = struct {
 
 pub const ClientCmd = union(enum) {
     whoami: CliendCmdWhoami,
+
+    fn deinit(self: ClientCmd, gpa: std.mem.Allocator) void {
+        _ = gpa;
+        switch (self) {
+            .whoami => {},
+        }
+    }
 };
 
 /// Represents a token, that client sends
@@ -31,7 +38,8 @@ pub const ClientToken = union(enum) {
 
     pub fn deinit(self: ClientToken, gpa: std.mem.Allocator) void {
         switch (self) {
-            .msg => |msg| msg.deinit(gpa),
+            .msg => self.msg.deinit(gpa),
+            .cmd => self.cmd.deinit(gpa),
         }
     }
 
@@ -73,7 +81,7 @@ test "ClientToken creates a message token" {
     const gpa = std.testing.allocator;
     const str = "some msg";
 
-    const token = try ClientToken.fromStringAlloc(gpa, str);
+    var token = try ClientToken.fromStringAlloc(gpa, str);
     defer token.deinit(gpa);
 
     try std.testing.expectEqualStrings(str, token.msg.msg);
