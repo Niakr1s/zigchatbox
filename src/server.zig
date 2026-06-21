@@ -57,20 +57,31 @@ pub const Server = struct {
             }
         }
 
+        const helloLine = try std.fmt.allocPrint(gpa, "{s} joined\n", .{connection.username});
+        defer gpa.free(helloLine);
+        try self.broadcast(io, helloLine);
+
         var readBuf: [256]u8 = undefined;
         var reader = connection.stream.reader(io, &readBuf);
 
         while (try reader.interface.takeDelimiter('\n')) |line| {
             const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
-            try self.broadcast(io, fullLine);
+            defer gpa.free(fullLine);
+            try self.broadcastExceptOne(io, fullLine, connection.username);
         }
         std.debug.print("[{s}]: disconnected\n", .{connection.username});
     }
 
     fn broadcast(self: *Self, io: std.Io, line: []const u8) !void {
+        return self.broadcastExceptOne(io, line, "");
+    }
+
+    fn broadcastExceptOne(self: *Self, io: std.Io, line: []const u8, except: []const u8) !void {
         std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
         var iter = self.connections.valueIterator();
         while (iter.next()) |connection| {
+            if (std.mem.eql(u8, except, connection.*.username)) continue;
+
             var writeBuf: [256]u8 = undefined;
             var writer = connection.*.stream.writer(io, &writeBuf);
             _ = try writer.interface.write(line);
