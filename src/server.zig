@@ -1,7 +1,106 @@
 const std = @import("std");
 const tokens = @import("tokens.zig");
 
-pub const Server = struct {
+pub const NetServer = struct {
+    pub const Type = Server(NetConnectionProducer, NetConnection);
+
+    pub const NetConnection = struct {
+        const Self = @This();
+
+        stream: std.Io.net.Stream,
+
+        fn reader(self: Self, io: std.Io, buf: []u8) std.Io.Reader {
+            return self.stream.reader(io, buf).interface;
+        }
+    };
+
+    pub const NetConnectionProducer = struct {
+        const Self = @This();
+
+        server: std.Io.net.Server,
+
+        pub fn initFromUnixSocket(io: std.Io, sockPath: []const u8) !NetConnectionProducer {
+            const sock: std.Io.net.UnixAddress = try .init(sockPath);
+            const server: std.Io.net.Server = try sock.listen(io, .{});
+
+            return Self{
+                .server = server,
+            };
+        }
+
+        pub fn deinit(self: *Self, gpa: std.mem.Allocator, io: std.Io) void {
+            _ = gpa;
+            self.server.deinit(io);
+        }
+
+        pub fn waitForConnection(self: *Self, io: std.Io) !NetConnection {
+            const stream = try self.server.accept(io);
+
+            const netConnection = NetConnection{
+                .stream = stream,
+            };
+            return netConnection;
+        }
+    };
+};
+
+pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
+    return struct {
+        const Self = @This();
+
+        connectionProducer: *ConnectionProducer,
+        group: std.Io.Group = .init,
+
+        connections: std.StringArrayHashMapUnmanaged(User) = .empty,
+        connectionsMu: std.Io.Mutex = .init,
+
+        const User = struct {
+            nickname: []const u8,
+            connection: *Connection,
+        };
+
+        pub fn init(connectionProducer: *ConnectionProducer) Self {
+            return Self{
+                .connectionProducer = connectionProducer,
+            };
+        }
+
+        pub fn deinit(self: *Self, gpa: std.mem.Allocator, io: std.Io) void {
+            self.connectionProducer.deinit(gpa, io);
+            self.group.cancel(io);
+            self.connections.deinit(gpa);
+        }
+
+        pub fn start(self: *Self, gpa: std.mem.Allocator, io: std.Io) !void {
+            while (true) {
+                const connection: Connection = try self.connectionProducer.waitForConnection(io);
+                self.group.async(io, Self.handleConnectionAsync, .{ self, gpa, io, connection });
+            }
+        }
+
+        fn handleConnectionAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: Connection) error{Canceled}!void {
+            self.handleConnection(gpa, io, connection) catch |err| {
+                std.debug.print("[{s}]: {any}\n", .{ connection.nickname, err });
+                switch (err) {
+                    error.Canceled => return err,
+                    else => {},
+                }
+            };
+        }
+
+        fn handleConnection(_: *Self, _: std.mem.Allocator, io: std.Io, connection: Connection) !void {
+            var readBuf: [256]u8 = undefined;
+            const reader = connection.reader(io, &readBuf);
+            _ = reader;
+            // while (true) {
+            //     const line = try reader.interface.takeDelimeter('\n');
+            //     std.debug.print("{s}\n", .{line});
+            // }
+        }
+    };
+}
+
+pub const OldServer = struct {
     const Self = @This();
 
     server: std.Io.net.Server,
@@ -11,7 +110,7 @@ pub const Server = struct {
     pub fn init(server: std.Io.net.Server) !Self {
         const group: std.Io.Group = .init;
 
-        return Server{
+        return OldServer{
             .server = server,
             .group = group,
         };
@@ -178,6 +277,12 @@ const Broadcaster = struct {
         }
     }
 };
+
+// fn Connection(comptime Conn: type) type {
+//     return struct {
+//         const Self = @This();
+//     };
+// }
 
 const StreamConnection = struct {
     const Self = @This();
