@@ -16,10 +16,6 @@ pub const ClientMsg = struct {
     }
 };
 
-const CliendCmdWhoami = struct {
-    const WHOAMI = "whoami";
-};
-
 pub const ClientCmd = union(enum) {
     whoami: CliendCmdWhoami,
 
@@ -27,6 +23,24 @@ pub const ClientCmd = union(enum) {
         _ = gpa;
         switch (self) {
             .whoami => {},
+        }
+    }
+
+    pub const CliendCmdWhoami = struct {
+        const WHOAMI = "whoami";
+    };
+
+    /// Args:
+    ///   str: this should be a command without command prefix
+    ///   so, if a command: "/whoami", caller should trim the first char
+    fn fromStringAlloc(gpa: std.mem.Allocator, str: []const u8) !ClientCmd {
+        _ = gpa;
+
+        const trimmed = std.mem.trim(u8, str, " ");
+        if (std.mem.eql(u8, CliendCmdWhoami.WHOAMI, trimmed)) {
+            return ClientCmd{ .whoami = .{} };
+        } else {
+            return error.UnknownClientCmd;
         }
     }
 };
@@ -51,13 +65,10 @@ pub const ClientToken = union(enum) {
         }
 
         if (str[0] == '/') {
-            if (std.mem.eql(u8, CliendCmdWhoami.WHOAMI, str[1..])) {
-                return ClientToken{
-                    .cmd = ClientCmd{ .whoami = .{} },
-                };
-            } else {
-                return error.UnknownClientCmd;
-            }
+            const cmd = try ClientCmd.fromStringAlloc(gpa, str[1..]);
+            return ClientToken{
+                .cmd = cmd,
+            };
         } else {
             const msg = try ClientMsg.fromStringAlloc(gpa, str);
             return ClientToken{
@@ -75,6 +86,26 @@ test "ClientMsg contains the same string" {
     defer msg.deinit(gpa);
 
     try std.testing.expectEqualStrings(str, msg.msg);
+}
+
+test "ClienCmd creates whoami command" {
+    const gpa = std.testing.allocator;
+    const str = ClientCmd.CliendCmdWhoami.WHOAMI;
+
+    const msg = try ClientCmd.fromStringAlloc(gpa, str);
+    defer msg.deinit(gpa);
+
+    try std.testing.expectEqual(ClientCmd.CliendCmdWhoami{}, msg.whoami);
+}
+
+test "ClienCmd trims incoming str" {
+    const gpa = std.testing.allocator;
+    const str = ClientCmd.CliendCmdWhoami.WHOAMI ++ "   ";
+
+    const msg = try ClientCmd.fromStringAlloc(gpa, str);
+    defer msg.deinit(gpa);
+
+    try std.testing.expectEqual(ClientCmd.CliendCmdWhoami{}, msg.whoami);
 }
 
 test "ClientToken creates a message token" {
