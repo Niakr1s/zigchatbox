@@ -28,3 +28,4 @@ Cool
 - [ ] Add tests to server.zig
 - [ ] Add '/exit' command
 - [ ] Add sort to '/who' command
+- [ ] ADd '/history lines' command
