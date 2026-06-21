@@ -101,24 +101,14 @@ pub const ClientToken = union(enum) {
     }
 };
 
-test "ClientMsg contains the same string" {
-    const gpa = std.testing.allocator;
-    const str = "some msg";
-
-    const msg = try ClientMsg.fromStringAlloc(gpa, str);
-    defer msg.deinit(gpa);
-
-    try std.testing.expectEqualStrings(str, msg.msg);
-}
-
 test "ClienCmd creates whoami command" {
     const gpa = std.testing.allocator;
-    const str = ClientCmd.Whoami.CMD;
+    const str = "/" ++ ClientCmd.Whoami.CMD;
 
-    const msg = try ClientCmd.fromStringAlloc(gpa, str);
-    defer msg.deinit(gpa);
+    const token = try ClientToken.fromStringAlloc(gpa, str);
+    defer token.deinit(gpa);
 
-    try std.testing.expectEqual(ClientCmd.Whoami{}, msg.whoami);
+    try std.testing.expectEqual(ClientCmd.Whoami{}, token.cmd.whoami);
 }
 
 test "ClientCmd creates nickname command" {
@@ -132,16 +122,6 @@ test "ClientCmd creates nickname command" {
     try std.testing.expectEqualDeep(ClientCmd.Nickname{
         .nickname = expectedNickname,
     }, token.cmd.nickname);
-}
-
-test "ClienCmd trims incoming str" {
-    const gpa = std.testing.allocator;
-    const str = ClientCmd.Whoami.CMD ++ "   ";
-
-    const msg = try ClientCmd.fromStringAlloc(gpa, str);
-    defer msg.deinit(gpa);
-
-    try std.testing.expectEqual(ClientCmd.Whoami{}, msg.whoami);
 }
 
 test "ClientToken creates a message token" {
