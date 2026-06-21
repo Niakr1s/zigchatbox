@@ -5,7 +5,7 @@ pub const Server = struct {
     const Self = @This();
 
     server: std.Io.net.Server,
-    connections: std.StringHashMapUnmanaged(*Connection) = .empty,
+    connections: std.StringArrayHashMapUnmanaged(*Connection) = .empty,
     group: std.Io.Group,
 
     pub fn init(server: std.Io.net.Server) !Self {
@@ -51,7 +51,7 @@ pub const Server = struct {
 
     fn startMessaging(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !void {
         defer {
-            const removed = self.connections.remove(connection.username);
+            const removed = self.connections.swapRemove(connection.username);
             if (!removed) {
                 std.debug.print("[{s}]: Error: wasn't removed from connections\n", .{connection.username});
             }
@@ -59,7 +59,7 @@ pub const Server = struct {
 
         const helloLine = try std.fmt.allocPrint(gpa, "{s}: joined\n", .{connection.username});
         defer gpa.free(helloLine);
-        try self.broadcast(io, helloLine);
+        try Broadcaster.broadcast(io, self.connections.values(), helloLine);
 
         var readBuf: [256]u8 = undefined;
         var reader = connection.stream.reader(io, &readBuf);
@@ -67,24 +67,27 @@ pub const Server = struct {
         while (try reader.interface.takeDelimiter('\n')) |line| {
             const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
             defer gpa.free(fullLine);
-            try self.broadcastExceptOne(io, fullLine, connection.username);
+            try Broadcaster.broadcastExceptOne(io, self.connections.values(), fullLine, connection.username);
         }
         const disconnectedLine = try std.fmt.allocPrint(gpa, "{s}: disconnected\n", .{connection.username});
         defer gpa.free(disconnectedLine);
-        try self.broadcastExceptOne(io, disconnectedLine, connection.username);
+        try Broadcaster.broadcastExceptOne(io, self.connections.values(), disconnectedLine, connection.username);
         // std.debug.print("[{s}]: disconnected\n", .{connection.username});
     }
+};
 
-    fn broadcast(self: *Self, io: std.Io, line: []const u8) !void {
-        return self.broadcastExceptOne(io, line, "");
+const Broadcaster = struct {
+    const Self = @This();
+
+    fn broadcast(io: std.Io, connections: []*Connection, line: []const u8) !void {
+        return Self.broadcastExceptOne(io, connections, line, "");
     }
 
-    fn broadcastExceptOne(self: *Self, io: std.Io, line: []const u8, except: []const u8) !void {
+    fn broadcastExceptOne(io: std.Io, connections: []*Connection, line: []const u8, except: []const u8) !void {
         // std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
         std.debug.print("{s}", .{line});
 
-        var iter = self.connections.valueIterator();
-        while (iter.next()) |connection| {
+        for (connections) |connection| {
             if (std.mem.eql(u8, except, connection.*.username)) continue;
 
             var writeBuf: [256]u8 = undefined;
