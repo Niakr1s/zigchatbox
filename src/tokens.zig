@@ -27,7 +27,7 @@ pub const ClientCmd = union(enum) {
     }
 
     pub const CliendCmdWhoami = struct {
-        const WHOAMI = "whoami";
+        const CMD = "whoami";
     };
 
     /// Args:
@@ -37,7 +37,7 @@ pub const ClientCmd = union(enum) {
         _ = gpa;
 
         const trimmed = std.mem.trim(u8, str, " ");
-        if (std.mem.eql(u8, CliendCmdWhoami.WHOAMI, trimmed)) {
+        if (std.mem.eql(u8, CliendCmdWhoami.CMD, trimmed)) {
             return ClientCmd{ .whoami = .{} };
         } else {
             return error.UnknownClientCmd;
@@ -89,7 +89,7 @@ test "ClientMsg contains the same string" {
 
 test "ClienCmd creates whoami command" {
     const gpa = std.testing.allocator;
-    const str = ClientCmd.CliendCmdWhoami.WHOAMI;
+    const str = ClientCmd.CliendCmdWhoami.CMD;
 
     const msg = try ClientCmd.fromStringAlloc(gpa, str);
     defer msg.deinit(gpa);
@@ -99,7 +99,7 @@ test "ClienCmd creates whoami command" {
 
 test "ClienCmd trims incoming str" {
     const gpa = std.testing.allocator;
-    const str = ClientCmd.CliendCmdWhoami.WHOAMI ++ "   ";
+    const str = ClientCmd.CliendCmdWhoami.CMD ++ "   ";
 
     const msg = try ClientCmd.fromStringAlloc(gpa, str);
     defer msg.deinit(gpa);
