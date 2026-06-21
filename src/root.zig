@@ -1,18 +1,57 @@
-//! By convention, root.zig is the root source file when making a package.
 const std = @import("std");
-const Io = std.Io;
 
-/// This is a documentation comment to explain the `printAnotherMessage` function below.
-///
-/// Accepting an `Io.Writer` instance is a handy way to write reusable code.
-pub fn printAnotherMessage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.print("Run `zig build test` to run the tests.\n", .{});
+/// A simple message line got from client
+const ClientMsg = struct {
+    msg: []const u8,
+
+    fn deinit(self: ClientMsg, gpa: std.mem.Allocator) void {
+        gpa.free(self.msg);
+    }
+
+    fn fromStringAlloc(gpa: std.mem.Allocator, str: []const u8) !ClientMsg {
+        const msg = try gpa.dupe(u8, str);
+        return ClientMsg{
+            .msg = msg,
+        };
+    }
+};
+
+/// Represents a token, that client sends
+const ClientToken = union(enum) {
+    msg: ClientMsg,
+
+    fn deinit(self: ClientToken, gpa: std.mem.Allocator) void {
+        switch (self) {
+            .msg => |msg| msg.deinit(gpa),
+        }
+    }
+
+    /// Constructs ClientToken
+    /// For now it holds just a ClientMsg
+    fn fromStringAlloc(gpa: std.mem.Allocator, str: []const u8) !ClientToken {
+        const msg = try ClientMsg.fromStringAlloc(gpa, str);
+        return ClientToken{
+            .msg = msg,
+        };
+    }
+};
+
+test "ClientMsg contains the same string" {
+    const gpa = std.testing.allocator;
+    const str = "some msg";
+
+    const msg = try ClientMsg.fromStringAlloc(gpa, str);
+    defer msg.deinit(gpa);
+
+    try std.testing.expectEqualStrings(str, msg.msg);
 }
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
+test "ClientToken creates a message token" {
+    const gpa = std.testing.allocator;
+    const str = "some msg";
 
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+    const token = try ClientToken.fromStringAlloc(gpa, str);
+    defer token.deinit(gpa);
+
+    try std.testing.expectEqualStrings(str, token.msg.msg);
 }
