@@ -38,18 +38,18 @@ pub const Server = struct {
             }
             try self.connections.put(gpa, connection.username, connection);
 
-            self.group.async(io, Self.startMessagingAsync, .{ self, io, connection });
+            self.group.async(io, Self.startMessagingAsync, .{ self, gpa, io, connection });
             // try self.startMessaging(io, connection);
         }
     }
 
-    fn startMessagingAsync(self: *Self, io: std.Io, connection: *Connection) error{Canceled}!void {
-        self.startMessaging(io, connection) catch |err| {
+    fn startMessagingAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) error{Canceled}!void {
+        self.startMessaging(gpa, io, connection) catch |err| {
             std.debug.print("[{s}]: {any}\n", .{ connection.username, err });
         };
     }
 
-    fn startMessaging(self: *Self, io: std.Io, connection: *Connection) !void {
+    fn startMessaging(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !void {
         defer {
             const removed = self.connections.remove(connection.username);
             if (!removed) {
@@ -61,8 +61,7 @@ pub const Server = struct {
         var reader = connection.stream.reader(io, &readBuf);
 
         while (try reader.interface.takeDelimiter('\n')) |line| {
-            var buf: [1024]u8 = undefined;
-            const fullLine = try std.fmt.bufPrint(&buf, "{s}: {s}\n", .{ connection.username, line });
+            const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
             try self.broadcast(io, fullLine);
         }
         std.debug.print("[{s}]: disconnected\n", .{connection.username});
