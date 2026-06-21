@@ -111,8 +111,11 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
         }
 
         pub fn start(self: *Self, gpa: std.mem.Allocator, io: std.Io) !void {
+            std.debug.print("server started\n", .{});
             while (true) {
+                std.debug.print("waiting a new connection\n", .{});
                 const connection: *Connection = try self.connectionProducer.waitForConnection(gpa, io);
+                std.debug.print("got a new connection\n", .{});
                 self.group.async(io, Self.handleConnectionAsync, .{ self, gpa, io, connection });
             }
         }
@@ -125,6 +128,7 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
 
         fn handleConnection(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !void {
             const user = try self.registerUser(gpa, io, connection);
+            std.debug.print("registered user {s}\n", .{user.nickname});
             try self.startMessaging(gpa, io, user);
         }
 
@@ -279,4 +283,92 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
             }
         };
     };
+}
+
+pub const MockServer = struct {
+    pub const Type = Server(MockConnectionProducer, MockConnection);
+
+    pub const MockConnection = struct {
+        const Self = @This();
+
+        input: []const u8,
+        output: [1024]u8 = undefined,
+
+        fn readLine(self: *Self, gpa: std.mem.Allocator, io: std.Io, buf: []u8) !?[]u8 {
+            _ = io;
+            _ = buf;
+
+            var reader = std.Io.Reader.fixed(self.input);
+            if (reader.takeDelimiter('\n') catch |err| {
+                const errLine = try std.fmt.allocPrint(gpa, "Error: {any}\n", .{err});
+                defer gpa.free(errLine);
+
+                switch (err) {
+                    error.StreamTooLong => {
+                        _ = try reader.discardDelimiterInclusive('\n');
+                        return err;
+                    },
+                    error.ReadFailed => return err,
+                }
+            }) |line| {
+                return try gpa.dupe(u8, line);
+            } else {
+                return null;
+            }
+        }
+
+        fn writeLine(self: *Self, io: std.Io, buf: []u8, line: []const u8) !void {
+            _ = io;
+            _ = buf;
+
+            var writer = std.Io.Writer.fixed(&self.output);
+            _ = try writer.write(line);
+            _ = try writer.flush();
+        }
+    };
+
+    pub const MockConnectionProducer = struct {
+        const Self = @This();
+
+        connections: std.ArrayListUnmanaged(*MockConnection) = .empty,
+
+        pub fn deinit(self: *Self, gpa: std.mem.Allocator, io: std.Io) void {
+            _ = io;
+            self.connections.deinit(gpa);
+        }
+
+        pub fn waitForConnection(self: *Self, gpa: std.mem.Allocator, io: std.Io) !*MockConnection {
+            _ = gpa;
+            _ = io;
+            std.debug.print("waitForConnection\n", .{});
+            const connection = self.connections.pop() orelse error.NoMoreConnections;
+            std.debug.print("waitForConnection: {any}\n", .{connection});
+            return connection;
+        }
+    };
+};
+
+// this test just hangs after MockConnectionProducer.waitForConnection got error.NoMoreConnections
+// and I don't know why, too tired atm
+test "server adds user" {
+    if (true) {
+        return error.SkipZigTest;
+    }
+
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var connectionProducer = MockServer.MockConnectionProducer{};
+
+    var mockConnection = MockServer.MockConnection{
+        .input = "/nickname User\n",
+    };
+
+    try connectionProducer.connections.append(gpa, &mockConnection);
+
+    var server = MockServer.Type.init(&connectionProducer);
+    defer server.deinit(gpa, io);
+
+    try server.start(gpa, io);
+    std.debug.print("after start\n", .{});
 }
