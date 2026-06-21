@@ -92,6 +92,7 @@ pub const Server = struct {
                         error.OutOfMemory => return err,
                     }
                 }; // handle errors
+                defer token.deinit(gpa);
 
                 switch (token) {
                     .msg => |msg| {
