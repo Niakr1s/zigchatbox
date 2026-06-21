@@ -107,6 +107,21 @@ pub const Server = struct {
                                 defer gpa.free(whoamiLine);
                                 try Broadcaster.broadcastToOne(io, connection, whoamiLine);
                             },
+                            .who => {
+                                const whoLine = try std.fmt.allocPrint(gpa, "> Clients: {any}\n", .{self.connections.values()});
+                                defer gpa.free(whoLine);
+
+                                var stringBuilder = try std.ArrayList(u8).initCapacity(gpa, connection.nickname.len * 2);
+
+                                // TODO: maybe I need to sort them...
+                                for (self.connections.values()) |conn| {
+                                    try stringBuilder.appendSlice(gpa, "> ");
+                                    try stringBuilder.appendSlice(gpa, conn.nickname);
+                                    try stringBuilder.appendSlice(gpa, "\n");
+                                }
+
+                                try Broadcaster.broadcastToOne(io, connection, stringBuilder.items);
+                            },
                             .nickname => {
                                 const newNickname = cmd.nickname.nickname;
                                 const oldNickname = connection.nickname;

@@ -51,6 +51,7 @@ pub const ClientToken = union(enum) {
 
     pub const Cmd = union(enum) {
         whoami: Whoami,
+        who: Who,
         nickname: Nickname,
 
         pub const PREFIX = "/";
@@ -58,6 +59,7 @@ pub const ClientToken = union(enum) {
         fn deinit(self: Cmd, gpa: std.mem.Allocator) void {
             switch (self) {
                 .whoami => {},
+                .who => {},
                 .nickname => {
                     self.nickname.deinit(gpa);
                 },
@@ -67,6 +69,11 @@ pub const ClientToken = union(enum) {
         /// Requests nickname
         pub const Whoami = struct {
             const CMD = "whoami";
+        };
+
+        /// Requests all connected users
+        pub const Who = struct {
+            const CMD = "who";
         };
 
         /// Changes nick
@@ -94,6 +101,8 @@ pub const ClientToken = union(enum) {
             // std.debug.print("cut prefix: {s}: in {s}: {any}\n", .{ Nickname.CMD ++ " ", str, std.mem.cutPrefix(u8, str, Nickname.CMD ++ " ") });
             if (std.mem.eql(u8, Whoami.CMD, str)) {
                 return Cmd{ .whoami = .{} };
+            } else if (std.mem.eql(u8, Who.CMD, str)) {
+                return Cmd{ .who = .{} };
             } else if (std.mem.cutPrefix(u8, str, Nickname.CMD ++ " ")) |nickname| {
                 return Cmd{ .nickname = try Nickname.init(gpa, nickname) };
             } else {
@@ -111,6 +120,16 @@ test "ClienCmd creates whoami command" {
     defer token.deinit(gpa);
 
     try std.testing.expectEqual(ClientToken.Cmd.Whoami{}, token.cmd.whoami);
+}
+
+test "ClienCmd creates who command" {
+    const gpa = std.testing.allocator;
+    const str = ClientToken.Cmd.PREFIX ++ ClientToken.Cmd.Who.CMD;
+
+    const token = try ClientToken.fromStringAlloc(gpa, str);
+    defer token.deinit(gpa);
+
+    try std.testing.expectEqual(ClientToken.Cmd.Who{}, token.cmd.who);
 }
 
 test "ClientCmd creates nickname command" {
