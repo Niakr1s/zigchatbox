@@ -80,9 +80,15 @@ pub const Server = struct {
                     },
                 }
             }) |line| {
-                const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
-                defer gpa.free(fullLine);
-                try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), fullLine, connection.username);
+                const token = try tokens.ClientToken.fromStringAlloc(gpa, line);
+
+                switch (token) {
+                    .msg => |msg| {
+                        const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, msg.msg });
+                        defer gpa.free(fullLine);
+                        try Broadcaster.broadcastToAllExceptOne(io, self.connections.values(), fullLine, connection.username);
+                    },
+                }
             } else {
                 break;
             }
