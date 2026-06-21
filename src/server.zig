@@ -107,6 +107,23 @@ pub const Server = struct {
                                 defer gpa.free(whoamiLine);
                                 try Broadcaster.broadcastToOne(io, connection, whoamiLine);
                             },
+                            .nickname => {
+                                const newNickname = cmd.nickname.nickname;
+                                const oldNickname = connection.nickname;
+                                if (!self.connections.contains(newNickname)) {
+                                    const removed = self.connections.swapRemove(oldNickname);
+                                    std.debug.print("removed {s} = {any}, connections count = {d}\n", .{ oldNickname, removed, self.connections.count() });
+
+                                    // this needs to be before setNickname call
+                                    const nicknameLine = try std.fmt.allocPrint(gpa, "> {s} is known as {s} now\n", .{ oldNickname, newNickname });
+                                    defer gpa.free(nicknameLine);
+
+                                    try connection.setNickname(gpa, newNickname);
+                                    try self.connections.put(gpa, connection.nickname, connection);
+
+                                    try Broadcaster.broadcastToAll(io, self.connections.values(), nicknameLine);
+                                }
+                            },
                         }
                     },
                 }
@@ -177,6 +194,12 @@ const Connection = struct {
         const line = try self.reader.takeDelimiter('\n') orelse return null;
         const token = try tokens.ClientToken.fromStringAlloc(gpa, line);
         return token;
+    }
+
+    /// Sets nickname. Frees old nickname. Dupes new nckname.
+    fn setNickname(self: *Self, gpa: std.mem.Allocator, newNickname: []const u8) !void {
+        gpa.free(self.nickname);
+        self.nickname = try gpa.dupe(u8, newNickname);
     }
 };
 
