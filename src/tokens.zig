@@ -20,8 +20,8 @@ pub const ClientToken = union(enum) {
             return error.EmptyString;
         }
 
-        if (trimmed[0] == '/') {
-            const cmd = try Cmd.fromStringAlloc(gpa, trimmed[1..]);
+        if (std.mem.cutPrefix(u8, trimmed, Cmd.PREFIX)) |cmdStr| {
+            const cmd = try Cmd.fromStringAlloc(gpa, cmdStr);
             return ClientToken{
                 .cmd = cmd,
             };
@@ -52,6 +52,8 @@ pub const ClientToken = union(enum) {
     pub const Cmd = union(enum) {
         whoami: Whoami,
         nickname: Nickname,
+
+        pub const PREFIX = "/";
 
         fn deinit(self: Cmd, gpa: std.mem.Allocator) void {
             switch (self) {
@@ -103,7 +105,7 @@ pub const ClientToken = union(enum) {
 
 test "ClienCmd creates whoami command" {
     const gpa = std.testing.allocator;
-    const str = "/" ++ ClientToken.Cmd.Whoami.CMD;
+    const str = ClientToken.Cmd.PREFIX ++ ClientToken.Cmd.Whoami.CMD;
 
     const token = try ClientToken.fromStringAlloc(gpa, str);
     defer token.deinit(gpa);
@@ -114,7 +116,7 @@ test "ClienCmd creates whoami command" {
 test "ClientCmd creates nickname command" {
     const gpa = std.testing.allocator;
     const expectedNickname = "Vasyan";
-    const str = "/" ++ ClientToken.Cmd.Nickname.CMD ++ " " ++ expectedNickname ++ " ";
+    const str = ClientToken.Cmd.PREFIX ++ ClientToken.Cmd.Nickname.CMD ++ " " ++ expectedNickname ++ " ";
 
     const token = try ClientToken.fromStringAlloc(gpa, str);
     defer token.deinit(gpa);
