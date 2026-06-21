@@ -9,8 +9,31 @@ pub const NetServer = struct {
 
         stream: std.Io.net.Stream,
 
-        fn reader(self: Self, io: std.Io, buf: []u8) std.Io.Reader {
-            return self.stream.reader(io, buf).interface;
+        fn readLine(self: *Self, gpa: std.mem.Allocator, io: std.Io, buf: []u8) !?[]u8 {
+            var reader = self.stream.reader(io, buf);
+            if (reader.interface.takeDelimiter('\n') catch |err| {
+                const errLine = try std.fmt.allocPrint(gpa, "Error: {any}\n", .{err});
+                defer gpa.free(errLine);
+                // try Broadcaster.broadcastToOne(io, connection, errLine);
+
+                switch (err) {
+                    error.StreamTooLong => {
+                        _ = try reader.interface.discardDelimiterInclusive('\n');
+                        return err;
+                    },
+                    error.ReadFailed => return err,
+                }
+            }) |line| {
+                return try gpa.dupe(u8, line);
+            } else {
+                return null;
+            }
+        }
+
+        fn writeLine(self: *Self, io: std.Io, buf: []u8, line: []const u8) !void {
+            var writer = self.stream.writer(io, buf);
+            _ = try writer.interface.write(line);
+            _ = try writer.interface.flush();
         }
     };
 
@@ -33,12 +56,11 @@ pub const NetServer = struct {
             self.server.deinit(io);
         }
 
-        pub fn waitForConnection(self: *Self, io: std.Io) !NetConnection {
+        pub fn waitForConnection(self: *Self, gpa: std.mem.Allocator, io: std.Io) !*NetConnection {
             const stream = try self.server.accept(io);
 
-            const netConnection = NetConnection{
-                .stream = stream,
-            };
+            var netConnection = try gpa.create(NetConnection);
+            netConnection.stream = stream;
             return netConnection;
         }
     };
@@ -57,6 +79,10 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
         const User = struct {
             nickname: []const u8,
             connection: *Connection,
+
+            fn deinit(self: *@This(), gpa: std.mem.Allocator) void {
+                gpa.free(self.nickname);
+            }
         };
 
         pub fn init(connectionProducer: *ConnectionProducer) Self {
@@ -73,29 +99,56 @@ pub fn Server(comptime ConnectionProducer: type, Connection: type) type {
 
         pub fn start(self: *Self, gpa: std.mem.Allocator, io: std.Io) !void {
             while (true) {
-                const connection: Connection = try self.connectionProducer.waitForConnection(io);
+                const connection: *Connection = try self.connectionProducer.waitForConnection(gpa, io);
                 self.group.async(io, Self.handleConnectionAsync, .{ self, gpa, io, connection });
             }
         }
 
-        fn handleConnectionAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: Connection) error{Canceled}!void {
+        fn handleConnectionAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) error{Canceled}!void {
             self.handleConnection(gpa, io, connection) catch |err| {
-                std.debug.print("[{s}]: {any}\n", .{ connection.nickname, err });
-                switch (err) {
-                    error.Canceled => return err,
-                    else => {},
-                }
+                std.debug.print("{any}\n", .{err});
             };
         }
 
-        fn handleConnection(_: *Self, _: std.mem.Allocator, io: std.Io, connection: Connection) !void {
+        fn handleConnection(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !void {
+            const user = try self.registerUser(gpa, io, connection) orelse return error.Unreachable;
+            std.debug.print("{s}\n", .{user.nickname});
+        }
+
+        fn registerUser(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !?User {
             var readBuf: [256]u8 = undefined;
-            const reader = connection.reader(io, &readBuf);
-            _ = reader;
-            // while (true) {
-            //     const line = try reader.interface.takeDelimeter('\n');
-            //     std.debug.print("{s}\n", .{line});
-            // }
+            var writeBuf: [256]u8 = undefined;
+
+            while (true) {
+                try connection.writeLine(io, &writeBuf, "> Hello! Write '/nickname nickname' to begin\n");
+                const line = try connection.readLine(gpa, io, &readBuf) orelse break;
+                defer gpa.free(line);
+
+                const token = try tokens.ClientToken.fromStringAlloc(gpa, line);
+                defer token.deinit(gpa);
+
+                switch (token) {
+                    tokens.ClientToken.cmd => {
+                        switch (token.cmd) {
+                            .nickname => {
+                                if (self.connections.contains(token.cmd.nickname.nickname)) {
+                                    continue;
+                                }
+
+                                const user = User{
+                                    .nickname = try gpa.dupe(u8, token.cmd.nickname.nickname),
+                                    .connection = connection,
+                                };
+                                try self.connections.put(gpa, user.nickname, user);
+                                return user;
+                            },
+                            else => {},
+                        }
+                    },
+                    else => {},
+                }
+            }
+            return null;
         }
     };
 }
