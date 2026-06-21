@@ -9,11 +9,11 @@ pub const Server = struct {
     group: std.Io.Group,
 
     pub fn init(server: std.Io.net.Server) !Self {
-        const connections: std.Io.Group = .init;
+        const group: std.Io.Group = .init;
 
         return Server{
             .server = server,
-            .group = connections,
+            .group = group,
         };
     }
 
