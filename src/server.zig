@@ -64,10 +64,28 @@ pub const Server = struct {
         var readBuf: [256]u8 = undefined;
         var reader = connection.stream.reader(io, &readBuf);
 
-        while (try reader.interface.takeDelimiter('\n')) |line| {
-            const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
-            defer gpa.free(fullLine);
-            try Broadcaster.broadcastExceptOne(io, self.connections.values(), fullLine, connection.username);
+        while (true) {
+            if (reader.interface.takeDelimiter('\n') catch |err| {
+                const errLine = try std.fmt.allocPrint(gpa, "Error: {any}\n", .{err});
+                defer gpa.free(errLine);
+                try Broadcaster.broadcastToOne(io, connection, errLine);
+
+                switch (err) {
+                    error.StreamTooLong => {
+                        _ = try reader.interface.discardDelimiterInclusive('\n');
+                        continue;
+                    },
+                    error.ReadFailed => {
+                        continue;
+                    },
+                }
+            }) |line| {
+                const fullLine = try std.fmt.allocPrint(gpa, "{s}: {s}\n", .{ connection.username, line });
+                defer gpa.free(fullLine);
+                try Broadcaster.broadcastExceptOne(io, self.connections.values(), fullLine, connection.username);
+            } else {
+                break;
+            }
         }
         const disconnectedLine = try std.fmt.allocPrint(gpa, "{s}: disconnected\n", .{connection.username});
         defer gpa.free(disconnectedLine);
@@ -78,6 +96,14 @@ pub const Server = struct {
 
 const Broadcaster = struct {
     const Self = @This();
+    const WRITE_BUF_SZ = 256;
+
+    fn broadcastToOne(io: std.Io, connection: *Connection, line: []const u8) !void {
+        var writeBuf: [WRITE_BUF_SZ]u8 = undefined;
+        var writer = connection.*.stream.writer(io, &writeBuf);
+        _ = try writer.interface.write(line);
+        _ = try writer.interface.flush();
+    }
 
     fn broadcast(io: std.Io, connections: []*Connection, line: []const u8) !void {
         return Self.broadcastExceptOne(io, connections, line, "");
@@ -89,11 +115,7 @@ const Broadcaster = struct {
 
         for (connections) |connection| {
             if (std.mem.eql(u8, except, connection.*.username)) continue;
-
-            var writeBuf: [256]u8 = undefined;
-            var writer = connection.*.stream.writer(io, &writeBuf);
-            _ = try writer.interface.write(line);
-            _ = try writer.interface.flush();
+            try broadcastToOne(io, connection, line);
         }
     }
 };
