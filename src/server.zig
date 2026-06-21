@@ -5,7 +5,7 @@ pub const Server = struct {
     const Self = @This();
 
     server: std.Io.net.Server,
-    connections: std.StringArrayHashMapUnmanaged(*Connection) = .empty,
+    connections: std.StringArrayHashMapUnmanaged(*StreamConnection) = .empty,
     group: std.Io.Group,
 
     pub fn init(server: std.Io.net.Server) !Self {
@@ -31,7 +31,7 @@ pub const Server = struct {
             const nickname = try std.fmt.allocPrint(gpa, "Anon{d}", .{i});
             defer gpa.free(nickname);
 
-            const connection = try Connection.init(gpa, nickname, stream);
+            const connection = try StreamConnection.init(gpa, nickname, stream);
 
             if (self.connections.contains(nickname)) {
                 return error.Duplicatenickname;
@@ -43,13 +43,13 @@ pub const Server = struct {
         }
     }
 
-    fn startMessagingAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) error{Canceled}!void {
+    fn startMessagingAsync(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *StreamConnection) error{Canceled}!void {
         self.startMessaging(gpa, io, connection) catch |err| {
             std.debug.print("[{s}]: {any}\n", .{ connection.nickname, err });
         };
     }
 
-    fn startMessaging(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *Connection) !void {
+    fn startMessaging(self: *Self, gpa: std.mem.Allocator, io: std.Io, connection: *StreamConnection) !void {
         defer {
             const removed = self.connections.swapRemove(connection.nickname);
             if (!removed) {
@@ -157,18 +157,18 @@ const Broadcaster = struct {
     const Self = @This();
     const WRITE_BUF_SZ = 256;
 
-    fn broadcastToOne(io: std.Io, connection: *Connection, line: []const u8) !void {
+    fn broadcastToOne(io: std.Io, connection: *StreamConnection, line: []const u8) !void {
         var writeBuf: [WRITE_BUF_SZ]u8 = undefined;
         var writer = connection.*.stream.writer(io, &writeBuf);
         _ = try writer.interface.write(line);
         _ = try writer.interface.flush();
     }
 
-    fn broadcastToAll(io: std.Io, connections: []*Connection, line: []const u8) !void {
+    fn broadcastToAll(io: std.Io, connections: []*StreamConnection, line: []const u8) !void {
         return Self.broadcastToAllExceptOne(io, connections, line, "");
     }
 
-    fn broadcastToAllExceptOne(io: std.Io, connections: []*Connection, line: []const u8, except: []const u8) !void {
+    fn broadcastToAllExceptOne(io: std.Io, connections: []*StreamConnection, line: []const u8, except: []const u8) !void {
         // std.debug.print("broadcasting for {d} users\n", .{self.connections.size});
         std.debug.print("{s}", .{line});
 
@@ -179,7 +179,7 @@ const Broadcaster = struct {
     }
 };
 
-const Connection = struct {
+const StreamConnection = struct {
     const Self = @This();
 
     nickname: []const u8,
@@ -187,8 +187,8 @@ const Connection = struct {
 
     /// Args:
     ///   nickname: will be duplicated and owned
-    fn init(gpa: std.mem.Allocator, nickname: []const u8, stream: std.Io.net.Stream) !*Connection {
-        const connection = try gpa.create(Connection);
+    fn init(gpa: std.mem.Allocator, nickname: []const u8, stream: std.Io.net.Stream) !*StreamConnection {
+        const connection = try gpa.create(StreamConnection);
         errdefer gpa.destroy(connection);
 
         connection.nickname = try gpa.dupe(u8, nickname);
