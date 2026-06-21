@@ -57,7 +57,7 @@ pub const Server = struct {
             }
         }
 
-        const helloLine = try std.fmt.allocPrint(gpa, "{s} joined\n", .{connection.username});
+        const helloLine = try std.fmt.allocPrint(gpa, "{s}: joined\n", .{connection.username});
         defer gpa.free(helloLine);
         try self.broadcast(io, helloLine);
 
