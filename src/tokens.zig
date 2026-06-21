@@ -1,7 +1,7 @@
 const std = @import("std");
 
 /// A simple message line got from client
-const ClientMsg = struct {
+pub const ClientMsg = struct {
     msg: []const u8,
 
     fn deinit(self: ClientMsg, gpa: std.mem.Allocator) void {
@@ -17,10 +17,10 @@ const ClientMsg = struct {
 };
 
 /// Represents a token, that client sends
-const ClientToken = union(enum) {
+pub const ClientToken = union(enum) {
     msg: ClientMsg,
 
-    fn deinit(self: ClientToken, gpa: std.mem.Allocator) void {
+    pub fn deinit(self: ClientToken, gpa: std.mem.Allocator) void {
         switch (self) {
             .msg => |msg| msg.deinit(gpa),
         }
@@ -56,10 +56,10 @@ test "ClientToken creates a message token" {
     try std.testing.expectEqualStrings(str, token.msg.msg);
 }
 
-const ClientTokenReader = struct {
+pub const ClientTokenReader = struct {
     reader: *std.Io.Reader,
 
-    fn next(self: ClientTokenReader, gpa: std.mem.Allocator) !?ClientToken {
+    pub fn next(self: ClientTokenReader, gpa: std.mem.Allocator) !?ClientToken {
         const line = try self.reader.takeDelimiter('\n') orelse return null;
         return try ClientToken.fromStringAlloc(gpa, line);
     }
